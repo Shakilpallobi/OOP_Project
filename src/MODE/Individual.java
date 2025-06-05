@@ -1,134 +1,216 @@
 package MODE;
-import java.util.*;
 
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 public class Individual {
 	private List<Coordenadas> path;
+	private int x, y;             // posição atual
 	private int birthTime;
 	private int deathTime;
 	private Individual parent;
+	private boolean reproduced;   // marca se já reproduziu neste passo
 
+	/**
+	 * Construtor usado em CORE.Simulation(int n, ...).
+	 * Escolhe uma posição inicial aleatória num grid n×n, e coloca-a no path.
+	 */
+	public Individual(int n) {
+		this.path = new ArrayList<>();
+		Random rnd = new Random();
+		// coordenadas válidas de 1 a n
+		this.x = rnd.nextInt(n) + 1;
+		this.y = rnd.nextInt(n) + 1;
+		this.path.add(new Coordenadas(x, y));
+		this.birthTime = 0;
+		this.deathTime = Integer.MAX_VALUE; // poderá ser ajustado noutro lado
+		this.parent = null;
+		this.reproduced = false;
+	}
+
+	/**
+	 * Construtor original (mantido) que cria o indivíduo a partir de uma coordenada dada,
+	 * definindo birthTime e deathTime.
+	 */
 	public Individual(Coordenadas start, int birth, int death) {
 		this.path = new ArrayList<>();
+		this.x = start.getX();
+		this.y = start.getY();
 		this.path.add(start);
 		this.birthTime = birth;
 		this.deathTime = death;
 		this.parent = null;
+		this.reproduced = false;
 	}
 
-	public Individual(Coordenadas start, int birth, int death, Individual parent, List<Coordenadas> inheritedPath) {
-		this.path = new ArrayList<>(inheritedPath);
-		this.birthTime = birth;
-		this.deathTime = death;
-		this.parent = parent;
+	/**
+	 * Se houver necessidade de inicializar outros atributos (por ex. genes), faz aqui.
+	 */
+	public void initialize() {
+		// … código de inicialização adicional, se necessário
 	}
 
+	// —————————————————————————————————————————————
+	// GETTERS/SETTERS exigidos pelos “events” em CORE:
+	// —————————————————————————————————————————————
+
+	/** Retorna a posição atual X */
+	public int getX() {
+		return x;
+	}
+
+	/** Retorna a posição atual Y */
+	public int getY() {
+		return y;
+	}
+
+	/**
+	 * Define a posição X e adiciona automaticamente ao path a nova Coordenadas(x,y).
+	 */
+	public void setX(int newX) {
+		this.x = newX;
+		this.path.add(new Coordenadas(this.x, this.y));
+	}
+
+	/**
+	 * Define a posição Y e adiciona automaticamente ao path a nova Coordenadas(x,y).
+	 */
+	public void setY(int newY) {
+		this.y = newY;
+		this.path.add(new Coordenadas(this.x, this.y));
+	}
+
+	/**
+	 * Move explicitamente para a coordenada next, sincronizando x,y e adicionando ao path.
+	 */
+	public void moveTo(Coordenadas next) {
+		this.x = next.getX();
+		this.y = next.getY();
+		this.path.add(next);
+	}
+
+	/** Retorna a coordenada atual (último elemento do path) */
+	public Coordenadas getCurrentPosition() {
+		return new Coordenadas(x, y);
+	}
+
+	/** Uma outra forma de chamar “posição atual” */
 	public Coordenadas getLastPosition() {
-		return path.get(path.size() - 1);
+		return getCurrentPosition();
 	}
 
+	/** Retorna o comprimento atual do percurso (tamanho de path) */
+	public int getLength() {
+		return path.size();
+	}
+
+	/** Alias para getLength(), “custo” do caminho até agora */
+	public int getCost() {
+		return getLength();
+	}
+
+	/** Retorna todo o path percorrido (lista de Coordenadas) */
 	public List<Coordenadas> getPath() {
 		return path;
 	}
 
-	public int getLength() {
-		return path.size() - 1; // número de arestas, não de nós
-	}
-
-	/**
-	 * Calcula o custo do caminho até agora.
-	 */
-	public int getCost(Grid grid) {
-		int cost = 0;
-		for (int i = 1; i < path.size(); i++) {
-			cost += grid.custoCaminho(path.get(i - 1), path.get(i));
-		}
-		return cost;
-	}
-
-	/**
-	 * Calcula o conforto φ(z).
-	 */
-	public double getComfort(Grid grid, Coordenadas target, int k) {
-		int length = getLength();
-		int cost = getCost(grid);
-		int maxEdgeCost = grid.getMaxCustoAresta();
-		int distToEnd = getLastPosition().getDistancia(target);
-
-		// Fórmula corrigida conforme enunciado
-		double part1 = (1.0 - cost - length + 2) / ((maxEdgeCost - 1.0) * length + 3);
-		double part2 = 1.0 - ((double) distToEnd / (grid.getN() + grid.getM() + 1));
-
-		// Clamping para manter valores válidos
-		part1 = Math.max(0.001, Math.min(0.999, part1));
-		part2 = Math.max(0.001, Math.min(0.999, part2));
-
-		return Math.pow(part1, k) * Math.pow(part2, k);
-	}
-
-
-	/**
-	 * Gera um novo indivíduo filho com base no caminho parcial deste.
-	 */
-	public Individual reproduz(int k) {
-		int total = path.size();
-		int baseSize = (int) Math.ceil(0.9 * total);
-		int extra = (int) Math.ceil(k * 0.1 * total);
-		int size = Math.min(total, baseSize + extra);
-
-		List<Coordenadas> childPath = new ArrayList<>(path.subList(0, size));
-		// tempo de nascimento e morte devem ser definidos no evento de reprodução
-		return new Individual(childPath.get(0), 0, 0, this, childPath);
-	}
-
-	/**
-	 * Adiciona uma nova coordenada e elimina ciclos, se necessário.
-	 */
-	public void move(Coordenadas next) {
-		path.add(next);
-		removeCycles();
-	}
-
-	private void removeCycles() {
-		Set<Coordenadas> seen = new HashSet<>();
-		List<Coordenadas> newPath = new ArrayList<>();
-
-		for (Coordenadas coord : path) {
-			if (seen.contains(coord)) {
-				// corta até à última ocorrência anterior
-				int idx = newPath.indexOf(coord);
-				newPath = new ArrayList<>(newPath.subList(0, idx + 1));
-			} else {
-				newPath.add(coord);
-				seen.add(coord);
-			}
-		}
-
-		this.path = newPath;
-	}
-
+	/** Retorna a hora de nascimento */
 	public int getBirthTime() {
 		return birthTime;
 	}
 
-	public int getDeathTime() {
-		return deathTime;
-	}
-
+	/** Define a hora de nascimento */
 	public void setBirthTime(int birthTime) {
 		this.birthTime = birthTime;
 	}
 
+	/** Retorna a hora de morte prevista */
+	public int getDeathTime() {
+		return deathTime;
+	}
+
+	/** Define a hora de morte prevista */
 	public void setDeathTime(int deathTime) {
 		this.deathTime = deathTime;
+	}
+
+	/** Marca ou desmarca se já reproduziu neste passo */
+	public boolean isReproduced() {
+		return reproduced;
+	}
+
+	/** Define se já reproduziu neste passo */
+	public void setReproduced(boolean reproduced) {
+		this.reproduced = reproduced;
+	}
+
+	/** Retorna o pai (usado para linha genética, se necessário) */
+	public Individual getParent() {
+		return parent;
+	}
+
+	/** Define o pai (usado para linha genética, se necessário) */
+	public void setParent(Individual parent) {
+		this.parent = parent;
+	}
+
+	/**
+	 * Cria um novo Individual “filho” combinando/geneticamente a partir deste e do outro.
+	 * Aqui está só um exemplo “clonado” sem lógica real de genes.
+	 */
+	public Individual reproduceWith(Individual outro) {
+		// Exemplo mínimo: cria um filho na posição do pai (neste caso, “this”)
+		Coordenadas spawn = this.getCurrentPosition();
+		Individual filho = new Individual(spawn,
+				Math.max(this.birthTime, outro.birthTime),
+				Math.min(this.deathTime, outro.deathTime));
+		filho.setParent(this);
+		return filho;
+	}
+
+	/**
+	 * Calcula e retorna o “conforto” deste indivíduo na sua posição atual,
+	 * dado o grid, o destino (célula alvo) e o parâmetro k.
+	 *
+	 * Aqui está uma implementação de exemplo baseada em distância Manhattan.
+	 * Ajusta conforme a tua função de conforto real.
+	 */
+	public double getComfort(int[][] grid, int destino, int k) {
+		// Exemplo: converte “destino” num par de coordenadas (Dx, Dy).
+		// Supondo que destino é, por exemplo, um índice linear ou uma célula
+		// cujo valor em grid[x][y] == destino.
+		// Para simplificar: encontra primeiro a célula cujo grid[cx][cy] == destino.
+		int n = grid.length; // assumindo grid quadrado de tamanho n×n
+		int dx = -1, dy = -1;
+		outer:
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				if (grid[i][j] == destino) {
+					dx = i + 1; // convertendo para “1-based”, se usas 1-based em Individual
+					dy = j + 1;
+					break outer;
+				}
+			}
+		}
+		if (dx == -1) {
+			// Se não encontrou destino no grid, retorna conforto neutro
+			return 0.0;
+		}
+		// Distância Manhattan entre (x,y) e (dx,dy):
+		int dist = Math.abs(this.x - dx) + Math.abs(this.y - dy);
+		// Normalizar: maior distância possível num n×n é 2*(n-1).
+		double maxDist = 2.0 * (n - 1);
+		double normalized = 1.0 - ((double) dist / maxDist);
+		// Se quiseres incluir “k” no cálculo, podes fazer algo como:
+		return Math.max(0.0, normalized * (1.0 - ((double) k / (k + 1))));
 	}
 
 	@Override
 	public String toString() {
 		return "Individual{" +
 				"path=" + path +
-				", cost=" + getLength() +
+				", cost=" + getCost() +
 				", birth=" + birthTime +
 				", death=" + deathTime +
 				'}';
