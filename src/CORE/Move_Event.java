@@ -1,53 +1,57 @@
 package CORE;
 
-import MODE.*;
+import MODE.Individual;
 
-import java.util.List;
-import java.util.Random;
-
+/**
+ * Evento que move um indivíduo para a célula adjacente de maior conforto.
+ */
 public class Move_Event implements Event_Strategy {
-
-	private static final Random random = new Random();
-
-	public Move_Event() {
-		// Nada a fazer no construtor
-	}
 
 	@Override
 	public void execute(Simulation_Context context, Individual individual) {
-		Grid grid = context.getGrid();
-		Coordenadas atual = individual.getLastPosition();
+		// Obtém a matriz de terreno (grid) diretamente como int[][]
+		int[][] grid = context.getGrid();
 
-		// 1. Obter movimentos válidos
-		List<Coordenadas> movimentos = grid.getValidMoves(atual);
-		if (movimentos.isEmpty()) return; // sem movimento possível
+		// Posição atual
+		int x = individual.getX();
+		int y = individual.getY();
+		int bestX = x;
+		int bestY = y;
 
-		// 2. Escolher um movimento aleatório entre os válidos
-		int index = random.nextInt(movimentos.size());
-		Coordenadas novaPos = movimentos.get(index);
+		// Conforto na célula atual
+		double bestComfort = individual.getComfort(grid, context.getDestino(), context.getK());
 
-		// 3. Adicionar ao caminho do indivíduo
-		individual.move(novaPos);
+		// Explora todas as 8 células adjacentes (incluindo diagonais)
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+				if (dx == 0 && dy == 0) continue;
 
-		// 4. Agendar próximo movimento (se ainda não morreu e tempo < τ)
-		int tempoAtual = context.getTempoAtual();
-		int tempoMorte = individual.getDeathTime();
+				int newX = x + dx;
+				int newY = y + dy;
 
-		if (tempoAtual < tempoMorte && tempoAtual < context.getTempoFinal()) {
-			int delta = gerarExponencial(context.getDelta(), individual, context);
-			int novoTempo = tempoAtual + delta;
+				// Verifica se (newX,newY) está dentro do grid (1..N)
+				if (newX >= 1 && newX <= context.getN() && newY >= 1 && newY <= context.getN()) {
+					// Move temporariamente para (newX,newY)
+					individual.setX(newX);
+					individual.setY(newY);
 
-			if (novoTempo < tempoMorte && novoTempo <= context.getTempoFinal()) {
-				Event novoMove = context.getEventFactory().createMoveEvent(individual, novoTempo);
-				context.getPEC().addEvent(novoMove);
+					// Calcula conforto nessa posição
+					double comfort = individual.getComfort(grid, context.getDestino(), context.getK());
+					if (comfort > bestComfort) {
+						bestComfort = comfort;
+						bestX = newX;
+						bestY = newY;
+					}
+
+					// Reverte para a posição original antes de testar outra direção
+					individual.setX(x);
+					individual.setY(y);
+				}
 			}
 		}
-	}
 
-	private int gerarExponencial(double mediaBase, Individual individuo, Simulation_Context ctx) {
-		double comfort = individuo.getComfort(ctx.getGrid(), ctx.getDestino(), ctx.getK());
-		double lambda = 1.0 / ((1 - Math.log(comfort)) * mediaBase);
-		double r = Math.random();
-		return (int) Math.ceil(-Math.log(1 - r) / lambda);
+		// Depois de testar todas as adjacências, move de facto para a melhor posição
+		individual.setX(bestX);
+		individual.setY(bestY);
 	}
 }
